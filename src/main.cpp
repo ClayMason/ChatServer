@@ -13,6 +13,8 @@
 #define PORT      "32001" // port listen to
 #define BACKLOG   10      // passed to listen()
 
+void handle (void *pParam);
+
 int main () {
 
   // set version to 2.2
@@ -76,13 +78,37 @@ int main () {
       perror("accept\n");
     }
     else {
+
+      // handle multithreading for multiple client connections
+      uintptr_t thread;
       printf ("Connection recieved => %s:%d\n",
         inet_ntoa(their_addr.sin_addr), ntohs(their_addr.sin_port));
-        handle(newsock);
+
+      printf("New socket is %d\n", newsock);
+
+      int* safesock = malloc(sizeof(int));
+      if (safesock) {
+        *safesock = newsock;
+        thread = _beginthread(handle, 0, safesock);
+        if ( thread == -1 ) {
+          fprintf(stderr, "Couldn't create thread: %d", GetLastError());
+          closesocket(newsock);
+        }
+      }
+      else {
+        printf("malloc");
+      }
+
+
     }
 
   }
 
   closesocket(sock);
   WSACleanup();
+}
+
+
+void handle (void *pParam) {
+  printf("Handling a socket.\n");
 }
