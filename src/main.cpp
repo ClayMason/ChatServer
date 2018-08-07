@@ -4,6 +4,9 @@
 
 #define _WIN32_WINNT _WIN32_WINNT_WINXP
 
+#include <string>
+#include <cstdlib>
+#include <cstdint>
 #include <stdio.h>
 #include <windows.h>
 #include <winsock2.h> //
@@ -47,7 +50,7 @@ int main () {
     return 1;
   }
 
-  if ( setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reustaddr, sizeof(int)) == SOCKET_ERROR ) {
+  if ( setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuseaddr, sizeof(int)) == SOCKET_ERROR ) {
     perror("setsocketopt");
     WSACleanup();
     return 1;
@@ -73,7 +76,7 @@ int main () {
     SOCKET newsock;
 
     ZeroMemory(&their_addr, sizeof(struct sockaddr));
-    newsock = accept (sock, (struct sockaddr*)&their addr, &size);
+    newsock = accept (sock, (struct sockaddr*)&their_addr, &size);
     if ( newsock == INVALID_SOCKET ) {
       perror("accept\n");
     }
@@ -86,10 +89,10 @@ int main () {
 
       printf("New socket is %d\n", newsock);
 
-      int* safesock = malloc(sizeof(int));
+      SOCKET* safesock = (SOCKET*) malloc(sizeof(SOCKET));
       if (safesock) {
         *safesock = newsock;
-        thread = _beginthread(handle, 0, safesock);
+        thread = _beginthread(handle, 0, (void*) safesock);
         if ( thread == -1 ) {
           fprintf(stderr, "Couldn't create thread: %d", GetLastError());
           closesocket(newsock);
@@ -111,4 +114,27 @@ int main () {
 
 void handle (void *pParam) {
   printf("Handling a socket.\n");
+
+  SOCKET* client = (SOCKET*) pParam;
+  int iResult = send(*client, "We got your message\n", 21, 0);
+  if ( iResult == SOCKET_ERROR ) {
+    perror("send");
+    return;
+  }
+
+  int MSG_IN_LEN = 200;
+  char msg_in[MSG_IN_LEN];
+
+  while(1) {
+    ZeroMemory(&msg_in, MSG_IN_LEN);
+    int rResult = recv(*client, msg_in, MSG_IN_LEN, 0);
+    if ( rResult > 0 ) {
+      printf("Client:\t%s", msg_in);
+      send(*client, "Ok sir.\n", 9, 0);
+      printf("Server:\tOk sir.\n");
+    }
+  }
+
+  printf("Sent data back to socket\n");
+  free(pParam);
 }
