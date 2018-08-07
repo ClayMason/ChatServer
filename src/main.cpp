@@ -12,8 +12,10 @@
 #include <winsock2.h> //
 #include <ws2tcpip.h> // libws232.a
 #include <process.h> // _beginthread ()
+#include <fstream>
+#include <iostream>
 
-#define PORT      "32001" // port listen to
+#define PORT      "80"    // port listen to
 #define BACKLOG   10      // passed to listen()
 
 void handle (void *pParam);
@@ -122,16 +124,29 @@ void handle (void *pParam) {
     return;
   }
 
-  int MSG_IN_LEN = 200;
-  char msg_in[MSG_IN_LEN];
+  int MSG_IN_LEN = 524;
+  unsigned char msg_in[MSG_IN_LEN];
 
   while(1) {
     ZeroMemory(&msg_in, MSG_IN_LEN);
-    int rResult = recv(*client, msg_in, MSG_IN_LEN, 0);
+    int rResult = recv(*client, (char*) msg_in, MSG_IN_LEN, 0);
     if ( rResult > 0 ) {
-      printf("Client:\t%s", msg_in);
-      send(*client, "Ok sir.\n", 9, 0);
-      printf("Server:\tOk sir.\n");
+      printf("Client:\t%s (%d bytes)\n", msg_in, rResult);
+
+      /*
+      * each line of the request recieved ends with
+      *CR(13) LF(10) -- use this to parse each line of the request
+      */
+
+      // send(*client, "Ok sir.\n", 9, 0);
+
+      // write output to file
+      std::ofstream out_file;
+      out_file.open("log.txt", std::ios_base::app);
+      for ( int i = 0; i < rResult; i++ ) {
+        out_file << (int) msg_in[i] << " ";
+      }
+      out_file.close ();
     }
   }
 
