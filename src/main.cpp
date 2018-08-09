@@ -100,6 +100,7 @@ int main () {
       printf("New socket is %d\n", newsock);
 
       SOCKET* safesock = (SOCKET*) malloc(sizeof(SOCKET));
+      /*TODO check if a socket connection already exists*/
       if (safesock) {
         *safesock = newsock;
         thread = _beginthread(handle, 0, (void*) safesock);
@@ -125,6 +126,9 @@ void fill_response(char* response, const char* type, char* secret_out);
 std::string base64_encode(const std::string &bindata);
 void find_secret_in(char* secret, unsigned char* inb_header);
 void get_secret(const char* secret_in, char* secret_out);
+void expand (char** stream_data, int* alloc_size);
+void extract_socket_stream (char* stream_in, int* has_mask, int* finish, int* op_code, unsigned __int64* load_length);
+void extract_payload_data (char* input, char* payload_data, unsigned _int64 length);
 
 void handle (void *pParam) {
   printf("Handling a socket.\n");
@@ -133,12 +137,19 @@ void handle (void *pParam) {
 
   int MSG_IN_LEN = 524;
   unsigned char msg_in[MSG_IN_LEN];
+  char raw_input[MSG_IN_LEN];
   bool handshake_sent = false;
+  int rResult;
+
+  bool stream_finished;
+  int stream_size = 0;
+  int stream_alloc = 4;
+  char** stream_data = new char*[stream_alloc];
 
   while(1) {
     if ( !handshake_sent ) {
       ZeroMemory(&msg_in, MSG_IN_LEN);
-      int rResult = recv(*client, (char*) msg_in, MSG_IN_LEN, 0);
+      rResult = recv(*client, (char*) msg_in, MSG_IN_LEN, 0);
       if ( rResult > 0 ) {
         printf("Client:\t%s (%d bytes)\n", msg_in, rResult);
 
@@ -172,12 +183,76 @@ void handle (void *pParam) {
       }
     }
     else {
+      // once the handshake is set, start processing input
+      rResult = recv(*client, raw_input, MSG_IN_LEN, 0);
+      if ( rResult == SOCKET_ERROR ) {
+        printf ("Error recieving ... Disconnecting from client \n");
+        // TODO - should disconnect from clinet
+      }
+      else if ( rResult > 0 ) {
+        // Recieved Data !
 
-    }
+        // if the array becomes filled, expand it
+        if ( stream_size == stream_alloc )
+          expand (stream_data, &stram_alloc);
+
+        int has_mask;
+        int fin;
+        int op_code;
+        unsigned __int64 load_length;
+        extract_socket_stream (raw_input, &has_mask, &fin, &op_code, &load_length);
+
+        if ( !has_mask ) {
+          printf ("The response did not have a mask. Disconnecting!\n");
+          // TODO - handle error
+        }
+        else {
+          printf("The client response has a mask!\n");
+
+          // store into stream_data
+          char payload_data[load_length];
+          extract_payload_data (raw_input, payload_data, load_length);
+          stream_data[stream_size-1] = payload_data;
+          ++ stream_size;
+
+          if ( fin ) { // if finish reading from socket
+            // process data
+
+            // TODO - @ end, clear stream_data array (reset)
+          }
+
+        }
+
+      }
+    } // end of else (handshake_sent)
+
   }
 
   printf("Sent data back to socket\n");
   free(pParam);
+}
+
+
+void expand (char** stream_data, int* alloc_size) {
+  // expand the stream_data size by 4
+  int new_alloc_size = alloc_size + 4;
+
+  // temporarily transfer the data into an array
+  char* tmp_data[new_alloc_size];
+  for ( int i = 0; i < alloc_size, i++ )
+    tmp_data[i] = stream_data[i];
+
+  // delete the old array and reallocate a new arr with the new size
+  delete stream_data;
+  stream_data = new char*[new_alloc_size];
+
+  // transfer the data back into the main array
+  for ( int i = 0; i < alloc_size; i++ )
+    stream_data[i] = tmp_data[i];
+
+  // set the new alloc_size
+  *alloc_size = new_alloc_size;
+
 }
 
 void find_secret_in(char* secret, unsigned char* inb_header) {
@@ -246,4 +321,38 @@ void get_secret(const char* secret_in, char* secret_out) {
   printf("Test String Out => %s\n", test_out);
   // => Should output "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
   */
+}
+
+void extract_socket_stream (char* stream_in, int* has_mask, int* finish, int* op_code, unsigned __int64* load_length) {
+  *finish = stream_in[0] & 1;
+  *op_code = (stream_in[0] & 240) >> 4;
+  *has_mask = stream_in[1] & 1;
+  *load_length = (stream_in[1] & 254) >> 1;
+  if ( *load_length == 126 ) {
+    *load_length = stream_in[2] + (stream_in[3] << 8);
+  }
+  else if ( *load_length == 127 ) {
+    *load_length = stream_in[2] + (stream_in[3] << 8) + (stream_in[4] << 16)
+      + (stream_in[5] << 24) + (stream_in[6] << 32) + (stream_in[7] << 40)
+      + (stream_in[8] << 48) + (stream_in[9] << 56);
+  }
+}
+
+void extract_payload_data (char* input, char* payload_data, unsigned _int64 length) {
+  /*
+  * extract the payload data from the Input Data
+  *   - payload data is starts @ 14th index of input (each index = 8 bits or 1 octet)
+  */
+
+  // Step 1: Acquire mask key stored from 10 to 13 (inclusive) index [4 chars long]
+  char mask[4];
+  for ( int i = 10, i <= 13; ++i ) mask[i-10] = input[i];
+
+  // Assumption made: Each unit of length is 1 octet = 1 character = 1 index in arr
+  for ( unsigned _int64 i = 0; i < length; ++i ) {
+    payload_data [i] = input[i + 14] ^ mask[i%4];
+  }
+
+  // data should be extracted
+
 }
