@@ -18,6 +18,13 @@ socket_test = function () {
       console.log("Protocol: " + ws.protocol);
     }
 
+    ws.onopen = function () {
+      // send data as a test
+      //ws.send("Sup server. This is your boy, client!");
+      ws.send("It fucking works !");
+      console.log("Message sent");
+    }
+
   }
   else console.log("No websocket support in browser");
 }
